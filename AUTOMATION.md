@@ -67,14 +67,20 @@
 2. 读取 schedule.csv、AUTOMATION.md、EMAIL_FORMAT.md、progress.md。
 3. 精准定位当天正式晨间邮件的最新 thread，优先匹配：当天日期 + 发件人 `geguemperor@gmail.com` + 收件人 `3094414938@qq.com` + 当天晨间主题；忽略旧线程和人工测试邮件。
 4. 读取该 thread 中用户当天最新回复的完整正文。
-5. 若回复含附件或内嵌图片，读取支持的图片附件并分析其中可见的做题记录、笔记、错题或进度；看不清的内容要标记为无法可靠识别，不猜。
+5. 若回复含附件或内嵌图片：
+   - 正常图片附件优先直接读取并分析。
+   - 若文件名是 .jpg/.jpeg/.png，但 Gmail 将 MIME 错标为 application/octet-stream 且 read_attachment_supported=false，不要直接放弃；改用 read_email(include_raw_mime=true) 读取原始 MIME，从对应 base64 MIME part 中恢复图片（JPEG 常以 /9j/ 开头，PNG 常以 iVBOR 开头），再作为图片分析。
+   - 只有在直接读取和原始 MIME 回退都失败时，才标记“图片无法可靠读取”；不得猜测图片内容。
 6. 综合：当天原计划 + 用户文字回复 + 图片证据 + 最近 progress.md。
 7. 审查完成后，当晚必须更新 GitHub `progress.md`：
    - 有回复：记录实际时间、完成项、未完成项、弱项、问题、图片/证据摘要、调整决定。
    - 无回复：也要新增当天记录，明确写“截至23:55未收到当日学习记录”，不得标记完成。
+   - 写入前必须重新 fetch 最新 progress.md，使用刚返回的 blob SHA 调用 update_file；不得使用早先缓存 SHA。
+   - update_file 后必须再次 fetch progress.md，确认当天日期块确实存在。
+   - 若因 SHA 冲突/文件已变更导致失败，重新 fetch 最新文件并重试1次；不要因为一次写入失败就直接终止整个晚间流程。
 8. 必要时依据用户明确要求或连续真实记录，小幅修改 schedule.csv / AUTOMATION.md；任何修改都写明原因。
-9. GitHub 更新完成后，再发送当天总结邮件到 `3094414938@qq.com`。
-10. 总结邮件采用“文档式”结构：执行概览、时间、完成情况、问题分析、图片/证据观察、调整结果、明日提示。允许使用富文本 HTML 排版；若技术条件允许且图片适合，可引用/附带相关图片，否则在正文中概述图片信息，不强行配图。
+9. GitHub 写入并复读验证后，发送当天总结邮件到 `3094414938@qq.com`。如果 GitHub 写入在重试后仍失败，也必须继续发送总结邮件，并在邮件中明确说明“GitHub进度记录本次写入失败，需要补录”，避免一处失败连带阻断邮件。
+10. 总结邮件采用“文档式”结构：执行概览、时间、完成情况、问题分析、图片/证据观察、调整结果、明日提示。使用 Gmail 的 body + content_type="text/markdown" 发送；不要使用 raw html_body。Markdown 会由 Gmail 工具正常渲染为可读的富文本邮件。
 11. 晚间总结是当日最终产出，不再要求用户另行回项目上传记录。
 
 ## GitHub 进度记录
